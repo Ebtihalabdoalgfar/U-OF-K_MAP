@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>خريطة جامعة الخرطوم — مجمع الوسط</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0f1923;
+      --panel:     #162030;
+      --border:    #1e3048;
+      --accent:    #3b82f6;
+      --accent2:   #60a5fa;
+      --text:      #e2eaf4;
+      --muted:     #7a99bb;
+      --faculty:   rgba(59,130,246,0.22);
+      --faculty-b: #3b82f6;
+      --admin:     rgba(16,185,129,0.18);
+      --admin-b:   #10b981;
+      --ground:    rgba(251,191,36,0.12);
+      --ground-b:  #fbbf24;
+      --frame:     rgba(255,255,255,0.04);
+      --frame-b:   rgba(255,255,255,0.15);
+    }
+
+    html, body { height: 100%; font-family: 'IBM Plex Sans Arabic', sans-serif; background: var(--bg); color: var(--text); }
+
+    /* ── Layout ── */
+    .shell { display: flex; flex-direction: column; height: 100vh; }
+
+    header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 20px; height: 56px;
+      background: var(--panel); border-bottom: 1px solid var(--border);
+      flex-shrink: 0; gap: 12px;
+    }
+    .logo { display: flex; align-items: center; gap: 10px; }
+    .logo-mark {
+      width: 32px; height: 32px; border-radius: 8px;
+      background: var(--accent); display: grid; place-items: center;
+      font-size: 16px; flex-shrink: 0;
+    }
+    .logo-text { line-height: 1.2; }
+    .logo-text strong { font-size: 14px; font-weight: 600; display: block; }
+    .logo-text span   { font-size: 11px; color: var(--muted); display: block; }
+
+    .search-wrap { position: relative; flex: 1; max-width: 320px; }
+    .search-wrap input {
+      width: 100%; padding: 8px 36px 8px 12px;
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text); font-size: 13px;
+      font-family: inherit; outline: none; transition: border .2s;
+      direction: rtl;
+    }
+    .search-wrap input:focus { border-color: var(--accent); }
+    .search-wrap input::placeholder { color: var(--muted); }
+    .search-icon {
+      position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+      color: var(--muted); font-size: 14px; pointer-events: none;
+    }
+    .search-results {
+      position: absolute; top: calc(100% + 6px); right: 0; left: 0;
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 8px; overflow: hidden; z-index: 1000;
+      display: none; box-shadow: 0 8px 24px rgba(0,0,0,.4);
+    }
+    .search-results.open { display: block; }
+    .search-result-item {
+      padding: 10px 14px; cursor: pointer; font-size: 13px;
+      border-bottom: 1px solid var(--border); transition: background .15s;
+    }
+    .search-result-item:last-child { border-bottom: none; }
+    .search-result-item:hover { background: var(--border); }
+    .search-result-item .en { color: var(--muted); font-size: 11px; margin-top: 2px; }
+
+    /* ── Map ── */
+    #map { flex: 1; }
+
+    /* ── Popup ── */
+    .leaflet-popup-content-wrapper {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.5);
+      color: var(--text); padding: 0;
+    }
+    .leaflet-popup-tip { background: var(--panel); }
+    .leaflet-popup-content { margin: 0; }
+    .popup-inner { padding: 14px 16px; min-width: 160px; }
+    .popup-inner h3 { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+    .popup-inner p  { font-size: 12px; color: var(--muted); direction: ltr; text-align: left; }
+    .popup-badge {
+      display: inline-block; margin-top: 8px;
+      padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;
+    }
+    .badge-faculty { background: rgba(59,130,246,.2); color: #60a5fa; }
+    .badge-admin   { background: rgba(16,185,129,.2); color: #34d399; }
+    .badge-ground  { background: rgba(251,191,36,.15); color: #fbbf24; }
+    .badge-frame   { background: rgba(255,255,255,.08); color: #94a3b8; }
+
+    /* ── Legend ── */
+    .legend {
+      position: absolute; bottom: 20px; left: 16px; z-index: 500;
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 10px; padding: 12px 14px; font-size: 12px;
+      display: flex; flex-direction: column; gap: 7px;
+      box-shadow: 0 4px 16px rgba(0,0,0,.4);
+    }
+    .legend-title { font-size: 11px; color: var(--muted); margin-bottom: 2px; font-weight: 600; }
+    .legend-item { display: flex; align-items: center; gap: 8px; }
+    .legend-swatch { width: 14px; height: 14px; border-radius: 3px; border: 2px solid; flex-shrink: 0; }
+
+    /* hide default Leaflet attribution clutter */
+    .leaflet-control-attribution { display: none; }
+  </style>
+</head>
+<body>
+<div class="shell">
+
+  <header>
+    <div class="logo">
+      <div class="logo-mark">🗺</div>
+      <div class="logo-text">
+        <strong>جامعة الخرطوم</strong>
+        <span>University of Khartoum — Central Campus</span>
+      </div>
+    </div>
+
+    <div class="search-wrap">
+      <input id="searchInput" type="text" placeholder="ابحث عن كلية أو مبنى…" autocomplete="off"/>
+      <span class="search-icon">🔍</span>
+      <div class="search-results" id="searchResults"></div>
+    </div>
+  </header>
+
+  <div id="map"></div>
+
+  <div class="legend">
+    <div class="legend-title">المفتاح</div>
+    <div class="legend-item">
+      <div class="legend-swatch" style="background:rgba(59,130,246,0.22);border-color:#3b82f6"></div>
+      <span>كلية</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-swatch" style="background:rgba(16,185,129,0.18);border-color:#10b981"></div>
+      <span>مبنى إداري</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-swatch" style="background:rgba(251,191,36,0.12);border-color:#fbbf24"></div>
+      <span>ميدان / مساحة</span>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ── Data ──────────────────────────────────────────────────────────────────────
+const buildings = [
+  {
+    name: "كلية الهندسة",
+    nameEn: "Faculty of Engineering",
+    type: "faculty",
+    coordinates: [[[32.53842390083381,15.61166311817013],[32.53877427013266,15.60928042005898],[32.54026459487535,15.60948379856231],[32.54019276048066,15.61003357442964],[32.54003536376614,15.61016867392112],[32.53928329764221,15.61009286548935],[32.53894824325315,15.6117509275601],[32.53842390083381,15.61166311817013]]]
+  },
+  {
+    name: "كلية الآداب",
+    nameEn: "Faculty of Arts",
+    type: "faculty",
+    coordinates: [[[32.54220067395613,15.61071535078969],[32.54211545279377,15.61136217783761],[32.54110940088129,15.61116481874142],[32.5412209506334,15.61049990936272],[32.54220067395613,15.61071535078969]]]
+  },
+  {
+    name: "كلية الاقتصاد",
+    nameEn: "Faculty of Economics",
+    type: "faculty",
+    coordinates: [[[32.54161163426792,15.61141362575281],[32.54151585283248,15.61204022286044],[32.54080652807541,15.61189376654806],[32.54082992316751,15.61152304537688],[32.54091411352752,15.6114803048572],[32.54099112613009,15.61135846801281],[32.54161163426792,15.61141362575281]]]
+  },
+  {
+    name: "كلية القانون",
+    nameEn: "Faculty of Law",
+    type: "faculty",
+    coordinates: [[[32.54221702493113,15.61060532612351],[32.54122192144825,15.61042666324995],[32.54135386290565,15.60964913536431],[32.54235994742842,15.6098382224676],[32.54221702493113,15.61060532612351]]]
+    },
+  {
+    name: "كلية العلوم",
+    nameEn: "Faculty of Science",
+    type: "faculty",
+    coordinates: [[[32.54329460645084,15.6117302753956],[32.54331415701417,15.61160849848115],[32.54271560278085,15.61149480191035],[32.54278482445186,15.61104637410831],[32.54281397913216,15.6108920193259],[32.54266814169307,15.61089499060261],[32.54269463588555,15.61067891794163],[32.5431823089801,15.61072337159002],[32.54318553104339,15.61062847415972],[32.54325469811702,15.61012454449915],[32.5435600997176,15.61017125198891],[32.54354807549453,15.61031601276158],[32.54349662018658,15.61130209227713],[32.54441958519026,15.61144253212209],[32.54437145944586,15.61171728130223],[32.54411683160436,15.61177891061859],[32.54405077158485,15.61196329213572],[32.54386429500879,15.61267735079142],[32.54250977056462,15.6124350209192],[32.54267210142289,15.61159077023337],[32.54329460645084,15.6117302753956]]]
+  },
+  {
+    name: "كلية جغرافيا",
+    nameEn: "Faculty of Geography",
+    type: "faculty",
+    coordinates: [[[32.54080137620344,15.61129861262087],[32.54075523081969,15.61156613714813],[32.54036663896161,15.61150821757549],[32.54040847456756,15.61135709033123],[32.5404472860573,15.61132200113714],[32.540478957213,15.6112402436892],[32.54080137620344,15.61129861262087]]]
+  },
+  {
+    name: "كلية المعمار",
+    nameEn: "Faculty of Architecture",
+    type: "faculty",
+    coordinates: [[[32.53991217125113,15.61112470922852],[32.53985380575232,15.6116472187542],[32.53972175803754,15.61162610447234],[32.53954207592918,15.61140560437553],[32.53916476886659,15.61130997227583],[32.53917812951412,15.61098270341447],[32.53991217125113,15.61112470922852]]]
+  },
+  {
+    name: "قسم العلوم السياسية",
+    nameEn: "Dept. of Political Science",
+    type: "faculty",
+    coordinates: [[[32.54320859184011,15.61019982412352],[32.54313760846411,15.61069319161044],[32.54257263445985,15.6106540489495],[32.54252211601403,15.6106279128314],[32.54253342550444,15.6105478404807],[32.54264412505464,15.61054844413808],[32.54266723857987,15.61043336683213],[32.54255428360084,15.61041779490589],[32.54256507090626,15.61032681079508],[32.54268200760099,15.61033221365844],[32.54269369705606,15.61021992496021],[32.54260038151199,15.61020274887268],[32.54261069890768,15.61011193471261],[32.54320859184011,15.61019982412352]]]
+  },
+  {
+    name: "المكتبة الرئيسية",
+    nameEn: "Main Library",
+    type: "admin",
+    coordinates: [[[32.5424358518105,15.61155488582908],[32.54261454863272,15.6115885755135],[32.5425197530797,15.61220038058775],[32.54157536950436,15.61206085406973],[32.5416679333489,15.61147881342198],[32.54186768355742,15.61148916904482],[32.54185094922452,15.61158725324491],[32.54174021858504,15.6115638800866],[32.54168781219418,15.61196429823814],[32.54196747190918,15.61199482009422],[32.5419862112228,15.61191062543449],[32.54222803506948,15.61193938145062],[32.54222984608403,15.61201587911572],[32.54244973682914,15.61202693188159],[32.54250610081306,15.6116932954203],[32.54244659655686,15.6116731878008],[32.5424358518105,15.61155488582908]]]
+  },
+  {
+    name: "قاعة الامتحانات الكبرى",
+    nameEn: "Main Examination Hall",
+    type: "admin",
+    coordinates: [[[32.54260378445597,15.6108752104672],[32.54264153919531,15.61095734738304],[32.54266931818626,15.61103293678928],[32.54265093259426,15.61118027891874],[32.54261063143008,15.61120547289499],[32.54254798807484,15.61131385378951],[32.54242465885988,15.61129973280315],[32.54240529216541,15.6111905511072],[32.54236623552351,15.61113004242894],[32.54238715221646,15.61096624958079],[32.542443580139,15.61089782232474],[32.54248672144545,15.61087737349425],[32.54260378445597,15.6108752104672]]]
+  },
+  {
+    name: "أمانة شؤون الطلاب",
+    nameEn: "Student Affairs",
+    type: "admin",
+    coordinates: [[[32.54042352430481,15.61155737802783],[32.54038873386578,15.61170169321093],[32.54021139572497,15.61164777478697],[32.54022896505531,15.61151461391441],[32.54042352430481,15.61155737802783]]]
+    },
+  {
+    name: "مكتب مدير الجامعة",
+    nameEn: "Vice Chancellor's Office",
+    type: "admin",
+    coordinates: [[[32.53941753747677,15.6117958349041],[32.53899402500375,15.61172170983989],[32.53905586817293,15.61135817418714],[32.53916189165073,15.61132639040377],[32.53952882700199,15.61143510250353],[32.53968281159037,15.61163381471447],[32.53985026682351,15.61167292763424],[32.5398292759146,15.61190155747185],[32.53941753747677,15.6117958349041]]]
+  },
+  {
+    name: "الميدان الغربي",
+    nameEn: "West Ground",
+    type: "ground",
+    coordinates: [[[32.54039174562664,15.61043027076086],[32.54025602793378,15.61102053624142],[32.5395479370437,15.61091852312187],[32.53967073855812,15.61025309751847],[32.54039174562664,15.61043027076086]]]
+  },
+  {
+    name: "الميدان الشرقي",
+    nameEn: "East Ground",
+    type: "ground",
+    coordinates: [[[32.54454062345116,15.6102578253401],[32.54438279976176,15.61133421290418],[32.54363320214311,15.61124504356696],[32.5437792260855,15.61010889556391],[32.54454062345116,15.6102578253401]]]
+  }
+];
+
+const campusFrame = {
+  coordinates: [[[32.54464234457259,15.6101701623685],[32.54441174630696,15.61174480394368],[32.54417531774597,15.61185928856307],[32.54389372375637,15.61268705459484],[32.53841663590595,15.61166175707129],[32.53879450874389,15.60924737014362],[32.54464234457259,15.6101701623685]]]
+};
+
+// ── Style helpers ─────────────────────────────────────────────────────────────
+function styleFor(type) {
+  const s = {
+    faculty: { color:"#3b82f6", fillColor:"#3b82f6", fillOpacity:.2, weight:1.5 },
+    admin:   { color:"#10b981", fillColor:"#10b981", fillOpacity:.18, weight:1.5 },
+    ground:  { color:"#fbbf24", fillColor:"#fbbf24", fillOpacity:.12, weight:1.2 },
+  };
+  return s[type] || s.faculty;
+}
+
+function badgeFor(type) {
+  const b = { faculty:"badge-faculty", admin:"badge-admin", ground:"badge-ground" };
+  return b[type] || "badge-faculty";
+}
+function labelFor(type) {
+  const l = { faculty:"كلية", admin:"مبنى إداري", ground:"ميدان" };
+  return l[type] || "";
+}
+
+// ── GeoJSON converter ─────────────────────────────────────────────────────────
+// Our coords are [lng, lat] — Leaflet needs [lat, lng]
+function toLatLngs(coords) {
+  return coords.map(ring => ring.map(([lng, lat]) => [lat, lng]));
+}
+
+// ── Map init ──────────────────────────────────────────────────────────────────
+const map = L.map('map', { zoomControl: true }).setView([15.6108, 32.5415], 17);
+
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  attribution: '© CartoDB',
+  maxZoom: 21
+}).addTo(map);
+
+// Campus frame
+L.polygon(toLatLngs(campusFrame.coordinates), {
+  color: "rgba(255,255,255,0.25)",
+  fillColor: "rgba(255,255,255,0)",
+  weight: 2,
+  dashArray: "6 4"
+}).addTo(map);
+
+// Buildings
+const layers = [];
+buildings.forEach(b => {
+  const poly = L.polygon(toLatLngs(b.coordinates), styleFor(b.type))
+    .bindPopup(
+      <div class="popup-inner">
+        <h3>${b.name}</h3>
+        <p>${b.nameEn}</p>
+        <span class="popup-badge ${badgeFor(b.type)}">${labelFor(b.type)}</span>
+      </div>
+    , { maxWidth: 240 })
+    .addTo(map);
+
+  poly.on('mouseover', function() {
+    this.setStyle({ fillOpacity: this.options.fillOpacity + 0.15, weight: 2.5 });
+  });
+  poly.on('mouseout', function() {
+    this.setStyle(styleFor(b.type));
+  });
+
+  layers.push({ data: b, layer: poly });
+});
+
+// ── Search ────────────────────────────────────────────────────────────────────
+const searchInput   = document.getElementById('searchInput');
+const searchResults = document.getElementById('searchResults');
+
+searchInput.addEventListener('input', () => {
+  const q = searchInput.value.trim();
+  searchResults.innerHTML = '';
+  if (!q) { searchResults.classList.remove('open'); return; }
+
+  const hits = layers.filter(l =>
+    l.data.name.includes(q) || l.data.nameEn.toLowerCase().includes(q.toLowerCase())
+  );
+
+  if (!hits.length) { searchResults.classList.remove('open'); return; }
+  hits.forEach(h => {
+    const div = document.createElement('div');
+    div.className = 'search-result-item';
+    div.innerHTML = ${h.data.name}<div class="en">${h.data.nameEn}</div>;
+    div.addEventListener('click', () => {
+      map.fitBounds(h.layer.getBounds(), { maxZoom: 19 });
+      h.layer.openPopup();
+      searchInput.value = h.data.name;
+      searchResults.classList.remove('open');
+    });
+    searchResults.appendChild(div);
+  });
+  searchResults.classList.add('open');
+});
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.search-wrap')) searchResults.classList.remove('open');
+});
+</script>
+</body>
+</html>
